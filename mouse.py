@@ -1,71 +1,8 @@
-import pyautogui
-import os, subprocess
-from time import sleep
+import subprocess
+import sys
 from random import randint, choice
 from math import ceil
-from tools import remove_dups, draw_points
-from multiprocessing import Process
-
-#WORKING DIRECTORY
-CWD = os.path.dirname(os.path.realpath(__file__))
-
-pyautogui.MINIMUM_DURATION = 0.01
-
-
-def real_click():
-    '''This function clicks the mouse with realistic errors:
-        occasional accidental right click
-        occasional double click
-        occasional no click
-    '''
-    if randint(1, 19) != 1:
-        sleep(93 / randint(83,201))
-        pyautogui.click()
-    else:
-        tmp_rand = randint(1, 3)
-        if tmp_rand == 1:
-            #double click
-            pyautogui.click()
-            sleep(randint(43, 113) / 1000)
-            pyautogui.click()
-        elif tmp_rand == 2:
-            pyautogui.click(button = 'right')
-            
-
-def move_to_img(img_name, deviation, speed):
-    '''
-    This function takes the name of an input image (excluding file extension)
-    and moves the mouse to a random pixel on that image.
-    
-    This advanced function saves the xdotool commands to a temporary file
-    'mouse.sh' in ./tmp/ then executes them from the shell to give clean curves
-    
-    This function is very slow because it must identify the image first. It is
-    highly recommended to find the coordinates of the image in a separate thread
-    and feed this into the move() function
-    '''
-    loc = list(pyautogui.locateAllOnScreen(CWD + '/img/' + img_name + '.png'))
-    init_pos = pyautogui.position()
-    
-    if loc:
-        loc = choice(loc)
-    #pick a random one from the list of all occurrences. If there is one occurence, choose that one
-    if loc:
-        x_bounds = loc[0] + randint(0, loc[2])
-        y_bounds = loc[1] + randint(0, loc[3])
-        
-        if speed ==  0:
-            os.system('xdotool mousemove ' + str(x_bounds) + ' ' + str(y_bounds))
-            sleep(randint(2,9) / 100)
-            pyautogui.click()
-        else:
-            move(mouse_bez(init_pos, (x_bounds, y_bounds), deviation, speed))
-            
-        return True
-    else:
-        print("Can't find location")
-        return False
-
+from typing import Tuple
 
 def move_to_area(x, y, width, height, deviation, speed):
     '''
@@ -74,13 +11,24 @@ def move_to_area(x, y, width, height, deviation, speed):
     This advanced function saves the xdotool commands to a temporary file
     'mouse.sh' in ./tmp/ then executes them from the shell to give clean curves
     '''
-    
-    init_pos = pyautogui.position()
-    
+
+
+    # Run the command and capture output
+    output = subprocess.check_output(["xdotool", "getdisplaygeometry"], text=True)
+
+    # Split into width and height
+    initial_w, initial_h = map(int, output.strip().split())
+
+    initial_w = randint(0, initial_w)
+    initial_h = randint(0, initial_h)
+
+    initial_w = 100 # until i figure out sth better
+    initial_h = 100
+
     x_coord = x + randint(0, width)
     y_coord = y + randint(0, height)
     
-    move(mouse_bez(init_pos, (x_coord, y_coord), deviation, speed))
+    move(mouse_bez((initial_w, initial_h), (x_coord, y_coord), deviation, speed))
   
     
 def pascal_row(n):
@@ -121,7 +69,7 @@ def make_bezier(xys):
     return bezier
 
 
-def mouse_bez(init_pos, fin_pos, deviation, speed):
+def mouse_bez(init_pos: Tuple[int, int], fin_pos: Tuple[int, int], deviation: int, speed: int):
     '''
     GENERATE BEZIER CURVE POINTS
     Takes init_pos and fin_pos as a 2-tuple representing xy coordinates
@@ -135,11 +83,11 @@ def mouse_bez(init_pos, fin_pos, deviation, speed):
     ts = [t/(speed * 100.0) for t in range(speed * 101)]
     
     #bezier centre control points between (deviation / 2) and (deviaion) of travel distance, plus or minus at random
-    control_1 = (init_pos[0] + choice((-1, 1)) * abs(ceil(fin_pos[0]) - ceil(init_pos[0])) * 0.01 * randint(deviation / 2, deviation),
-                init_pos[1] + choice((-1, 1)) * abs(ceil(fin_pos[1]) - ceil(init_pos[1])) * 0.01 * randint(deviation / 2, deviation)
+    control_1 = (init_pos[0] + choice((-1, 1)) * abs(ceil(fin_pos[0]) - ceil(init_pos[0])) * 0.01 * randint(deviation // 2, deviation),
+                init_pos[1] + choice((-1, 1)) * abs(ceil(fin_pos[1]) - ceil(init_pos[1])) * 0.01 * randint(deviation // 2, deviation)
                     )
-    control_2 = (init_pos[0] + choice((-1, 1)) * abs(ceil(fin_pos[0]) - ceil(init_pos[0])) * 0.01 * randint(deviation / 2, deviation),
-                init_pos[1] + choice((-1, 1)) * abs(ceil(fin_pos[1]) - ceil(init_pos[1])) * 0.01 * randint(deviation / 2, deviation)
+    control_2 = (init_pos[0] + choice((-1, 1)) * abs(ceil(fin_pos[0]) - ceil(init_pos[0])) * 0.01 * randint(deviation // 2, deviation),
+                init_pos[1] + choice((-1, 1)) * abs(ceil(fin_pos[1]) - ceil(init_pos[1])) * 0.01 * randint(deviation // 2, deviation)
                     )
         
     xys = [init_pos, control_1, control_2, fin_pos]
@@ -177,7 +125,7 @@ def connected_bez(coord_list, deviation, speed):
     return points
 
 
-def move(mouse_points, draw = False, rand_err = True):
+def move(mouse_points, rand_err = True):
     '''
     Moves mouse in accordance with a list of points (continuous curve)
     Input these as a list of points (2-tuple or another list)
@@ -197,23 +145,17 @@ def move(mouse_points, draw = False, rand_err = True):
     PARAMETERS:
         mouse_points
             list of 2-tuples or lists of ints or floats representing xy coords
-        draw
-            a boolean deciding whether or not to draw the curve the mouse makes
-            to a file in /tmp/
+        rand_err
+            whether to introduce random doubleclicks
     '''
     
-    fname = 'mouse.sh'
+    #fname = 'mouse.sh'
      
-    outfile = open(CWD + '/tmp/' + fname, 'w')
-    os.system('chmod +x ' + CWD + '/tmp/' + fname)
-    outfile.write('#!/bin/bash')
-    outfile.write('\n\n')
-    
-    #draw coords to file in ./tmp/
-    if draw == True:
-        drawpoints = [(v[0] - REL_ORIGIN[0], v[1] - REL_ORIGIN[1]) for v in mouse_points if type(v) is not str]
-        draw_points(drawpoints, width = 754, height = 503)    
-    
+    #outfile = open(CWD + '/tmp/' + fname, 'w')
+    #os.system('chmod +x ' + CWD + '/tmp/' + fname)
+    print('#!/bin/bash')
+    print('\n\n')
+
     
     #round floats to ints
     mouse_points = [[round(v) for v in x] if type(x) is not str else x for x in mouse_points]
@@ -222,18 +164,30 @@ def move(mouse_points, draw = False, rand_err = True):
             if rand_err:
                 tmp = randint(1,39)
                 if tmp == 1:
-                    outfile.write('xdotool click 3 \n')
+                    print('xdotool click 3 \n')
                 elif tmp == 2:
-                    outfile.write('xdotool click --repeat 2 1 \n')
+                    print('xdotool click --repeat 2 1 \n')
                 elif tmp in range(4, 40):   #if tmp == 4, write nothing
-                    outfile.write('xdotool click 1 \n') #normal click
+                    print('xdotool click 1 \n') #normal click
             else:
-                outfile.write('xdotool click 1 \n')
+                print('xdotool click 1 \n')
         else:
-            outfile.write('xdotool mousemove ' + str(coord[0]) + ' ' + str(coord[1]) + '\n')
+            if coord[0] >= 0 and coord[1] >= 0:
+                print('xdotool mousemove ' + str(coord[0]) + ' ' + str(coord[1]) + '\n', end='')
      
-    outfile.close()
-    subprocess.call([CWD + '/tmp/' + fname])
-    
+    # outfile.close()
+    # subprocess.call([CWD + '/tmp/' + fname])
 
-    
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 5:
+        print(f"Usage: python {sys.argv[0]} x y width height")
+        sys.exit(1)
+
+    x = int(sys.argv[1])
+    y = int(sys.argv[2])
+    width = int(sys.argv[3])
+    height = int(sys.argv[4])
+
+    move_to_area(x, y, width, height, 4, 8)
